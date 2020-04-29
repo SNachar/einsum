@@ -1,6 +1,6 @@
 function Out=einsum(str,varargin)
 %% Einsum for MATlab
-% Einstein Sommation like Numpy's einsum
+% Einstein Summation like Numpy's einsum
 % Input :
 %   - str : String like 'ik,kj-> ij'
 %   - varargin : Double called
@@ -25,10 +25,14 @@ ARROW = [45 62];
 SPACE = 32;
 VIRGULE = 44;
 % Clear spaces
-str = double(str);str(str==SPACE) = [];
+str = double(str);
+str(str==SPACE)=[];
+% Parse ellipses
+str = parse_ellipses(char(str), varargin{:});
 % Split with the arrow
 test = find(str(1:end-1)==ARROW(1) & str(2:end)==ARROW(2));
 if ~isscalar(test); error('Wrong input - str must be like ''ik,kj->ij'''); end
+
 outstr  = str(test+2:end);
 instr   = str(1:test-1);
 % Split input componant information
@@ -77,6 +81,64 @@ for id = 1:nb_ops
 end
 end
 
+function out = parse_ellipses(str, varargin)
+einsum_symbols_set = char(double('a'):double('z'));  % just use the lower case letters
+if any(strfind(str, '.'))
+    used = intersect(str, einsum_symbols_set);
+    unused = setdiff(einsum_symbols_set, used);
+    longest = 0;
+    
+    % split the input and output
+    split_tmp = split(str, '->');
+    output_sub = split_tmp{2};
+    split_subscripts = split(split_tmp{1}, ',');
+    
+    % Fix the input subscripts
+    for num = 1:numel(split_subscripts)
+        sub = split_subscripts{num};
+        if any(strfind(sub, '.'))
+            if (sum(sub=='.') ~= 3)
+                error("Invalid Ellipses.")
+            end
+            % Take into account numerical values
+            if isempty(varargin{num})
+                ellipse_count = 0;
+            else
+                ellipse_count = max(ndims(varargin{num}), 1);
+                ellipse_count = ellipse_count - (length(sub) - 3);
+            end
+            
+            if ellipse_count > longest
+                longest = ellipse_count;
+            end
+            
+            if ellipse_count < 0
+                error("Ellipses lengths do not match.")
+            elseif ellipse_count == 0
+                idx = sub == ELLIPSE;
+                split_subscripts{num} = sub(~idx);
+            else
+                rep_inds = unused(end-ellipse_count+1:end);
+                split_subscripts{num} = strrep(sub, '...', rep_inds);
+            end
+        end
+    end
+    
+    % join inputs
+    subscripts = join(split_subscripts, ',');
+    if longest == 0
+        out_ellipse = '';
+    else
+        out_ellipse = unused(end-longest+1:end);
+    end
+    tmp_output = strrep(output_sub, '...', out_ellipse);
+    out = strcat(subscripts{1}, '->', tmp_output);
+else
+    out = str;
+end
+% Turn it back into a double
+out = double(out);
+end
 function nids = dims(n,ids)
 % For permutation
 nids = zeros(n,1);
